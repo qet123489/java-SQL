@@ -1,0 +1,436 @@
+練習SQL
+SELECT  info.tej_comp_id AS tej公司碼, 
+		stdid.comp_id AS 公司碼,
+		stdid.comp_sname AS 公司名稱,
+		info.zdate AS 資料日,		
+	    info.ann_yymm  AS 封面年月,
+		director.tej_bst_id AS TEJ董事碼,
+		director.name AS 董事名稱,
+		detail.shares AS 持股數
+FROM 	bstn.dirtop_info AS info
+JOIN	basic.attr_stdid AS stdid
+		ON info.tej_comp_id = stdid.tej_comp_id
+JOIN	bstn.dirtop_detail AS detail
+		ON detail.tej_comp_id = info.tej_comp_id
+JOIN	basic.attr_director AS director
+		ON detail.tej_bst_id = director.tej_bst_id
+
+WHERE info.ann_yymm > '20181231'
+ORDER BY stdid.comp_id ASC
+----------------------------------------------------------
+SELECT
+    ann_yymm AS 封面年月,
+    COUNT(ann_yymm) AS 公司數量
+FROM 
+    bstn.dirtop_info
+GROUP BY 
+    ann_yymm
+ORDER BY 
+    ann_yymm DESC;
+------	--------------------------------------------------------
+	SELECT
+		stdid.MANUFACTOR AS 產業碼,
+		EXTRACT(YEAR FROM info.zdate) AS 年度,
+		count(info.zdate) AS 公司家數
+FROM
+		basic.attr_stdid AS stdid
+JOIN
+		bstn.dirtop_info AS info
+		ON stdid.tej_comp_id = info.tej_comp_id
+GROUP  by
+        stdid.MANUFACTOR,
+        EXTRACT(YEAR FROM info.zdate)
+ORDER by stdid.MANUFACTOR ASC,
+		 EXTRACT(YEAR FROM info.zdate) DESC;
+		 --------------------------------------------
+SELECT  
+		info.tej_comp_id AS tej公司碼, 
+		stdid.comp_id AS 公司碼,
+		stdid.comp_sname AS 公司名稱,
+	    info.ann_yymm  AS 封面年月,
+		count(info.ann_yymm)  AS 董事人數
+FROM 
+		bstn.dirtop_info AS info
+JOIN 
+		basic.attr_stdid AS stdid
+		ON info.tej_comp_id = stdid.tej_comp_id
+		
+WHERE info.ann_yymm = '20171201'
+GROUP BY     
+	info.tej_comp_id, 
+    stdid.comp_id, 
+    stdid.comp_sname, 
+    info.ann_yymm
+ORDER BY stdid.comp_id ASC;
+----------------------------------------------------------
+SELECT  
+		tej_comp_id AS tej公司碼, 
+		comp_id AS 公司碼,
+		comp_sname AS 公司名稱,
+	    LIST_DATE AS 上市日,
+		DELIST_DATE AS 下市日
+FROM 
+		basic.attr_stdid
+		
+WHERE LIST_DATE <= '20171201'AND
+	  (DELIST_DATE > '20171231' OR DELIST_DATE IS NULL)
+ORDER BY 
+	comp_id ASC;
+	-------------------------------------------------------
+	SELECT 
+    info.tej_comp_id AS tej公司碼,
+    stdid.comp_id AS 公司碼,
+    stdid.comp_sname AS 公司名稱,
+    info.zdate AS 資料日,
+    info.ann_yymm AS 封面年月
+FROM 
+    Twn.bstn.dirtop_info AS info
+JOIN 
+    basic.attr_stdid AS stdid
+    ON info.tej_comp_id = stdid.tej_comp_id
+WHERE 
+    info.ann_yymm > info.zdate
+    OR info.ann_yymm < (info.zdate - interval '6 months')
+ORDER BY 
+    stdid.comp_id ASC;
+	
+
+------------------------------------------------------------
+with tmp as (SELECT tej_comp_id,zdate
+               FROM bstn.dirtop_info
+               WHERE keyin >= '20191101')
+SELECT 
+		info.tej_comp_id AS tej公司碼, 
+		stdid.comp_id AS 公司碼,
+		stdid.comp_sname AS 公司名稱,
+		info.zdate AS 資料日,
+		detail.tej_bst_id AS TEJ董監碼,
+		director.name  AS 董事名稱
+FROM    tmp
+
+JOIN	bstn.dirtop_info AS info
+		ON info.tej_comp_id = tmp.tej_comp_id AND tmp.zdate = info.zdate
+		
+JOIN    basic.attr_stdid AS stdid
+		ON tmp.tej_comp_id = stdid.tej_comp_id
+		
+JOIN	bstn.dirtop_detail AS detail
+		ON detail.tej_comp_id = tmp.tej_comp_id AND tmp.zdate = detail.zdate
+		
+JOIN	basic.attr_director AS director
+		ON director.tej_bst_id = detail.tej_bst_id
+where	info.people_num != 10
+		
+	--------------------------------------------------------
+	WITH log_counts AS (
+    SELECT 
+        tej_comp_id,
+        zdate,
+        COUNT(*) AS record_count
+    FROM 
+        bstn.dirtop_detail_log
+    GROUP BY 
+        tej_comp_id, zdate
+),
+filtered_logs AS (
+    SELECT 
+        log.tej_comp_id, 
+        log.zdate, 
+        log.tej_bst_id, 
+        log.shares
+    FROM 
+        bstn.dirtop_detail_log AS log
+    JOIN 
+        log_counts AS counts
+        ON log.tej_comp_id = counts.tej_comp_id AND log.zdate = counts.zdate
+    WHERE 
+        counts.record_count < 10
+),
+detail_filtered AS (
+    SELECT
+        filtered.tej_comp_id AS tej公司碼, 
+        stdid.comp_id AS 公司碼,
+        stdid.comp_sname AS 公司名稱,
+        filtered.zdate AS 資料日,
+        filtered.tej_bst_id AS TEJ董監碼,
+        ROW_NUMBER() OVER (PARTITION BY filtered.tej_comp_id ORDER BY filtered.shares DESC) AS OD,
+        RANK() OVER (PARTITION BY filtered.tej_comp_id ORDER BY filtered.shares ASC) AS 排名,
+        filtered.shares AS SHARES
+    FROM 
+        filtered_logs AS filtered
+    JOIN 
+        basic.attr_stdid AS stdid
+        ON filtered.tej_comp_id = stdid.tej_comp_id
+),
+result AS (
+    SELECT 
+        *
+    FROM 
+        detail_filtered
+)
+SELECT *
+FROM result
+ORDER BY 公司碼 ASC, 排名 ASC;
+-------------------------------------------------------
+此為JAVA
+package com.tej;
+
+import org.apache.log4j.Logger;
+import org.apache.log4j.xml.DOMConfigurator;
+
+import java.io.File;
+import java.math.BigDecimal;
+import java.nio.file.FileSystems;
+import java.sql.Date;
+import java.time.format.DateTimeFormatter;
+import java.time.LocalDate;
+import java.util.Scanner;
+public class ConvertMain {
+    private static final Logger logger = Logger.getLogger("IMPORT");
+    /**
+     * 反斜線
+     */
+    public static final String SPT = FileSystems.getDefault().getSeparator();
+    /**
+     * data路徑資料夾
+     */
+    public static final String PATH = System.getProperty("user.dir") + SPT + "data" + SPT;
+
+    public static void main(String[] args) throws Exception {
+        DOMConfigurator.configure(".\\log4j.xml");
+
+
+// 型態轉換練習
+        String input;
+        try {
+            input = "123.3";
+            logger.info("" + toBigDecimal(input));
+            input = "1234";
+            logger.info(toInt(input));
+
+            input = "90年11月5日";
+            logger.info("西元年：" + toSQLDate(input));
+
+            input = "這是一段範例文字，用來測試擷取功能。";
+            String startPattern = "範例";
+            String endPattern = "測試";
+            logger.info(rRegexG(input, startPattern, endPattern));
+
+            input = "我數123牽著手，你說456一起走";
+            logger.info(rRegexInt(input));
+
+            input = "TEJ於民國79年05月05日登記創立";
+            logger.info(extractDate(input));
+
+        } catch (NullPointerException e) {
+            logger.error("空值運算錯誤", e);
+        }
+//讀檔練習
+        logger.info("目前讀取路徑:" + PATH);
+        try {
+            File[] fileArray = getTxtFileList(PATH);
+            if (fileArray != null) {
+                for (File file : fileArray) {
+                    logger.info("目前取得檔案:" + file);
+                    String txt = readTxt(file);
+                    logger.info("TXT內容:" + txt);
+                }
+            }
+        } catch (NullPointerException e) {
+            logger.error("空值運算錯誤", e);
+        }
+    }
+    /**
+     * 將輸入String 轉型 BigDecimal 型態
+     *
+     * @param data
+     * @return
+     */
+    private static BigDecimal toBigDecimal(String data) {
+        return new BigDecimal(data);
+    }
+    /**
+     * 將輸入String 轉型 Integer 型態
+     *
+     * @param data
+     * @return
+     */
+    private static Integer toInt(String data) {
+        return (Integer.parseInt(data));
+    }
+    /**
+     * 將輸入String 轉型 java.sql.Date
+     *
+     * @param data
+     * @return
+     */
+    private static Date toSQLDate(String data) {
+        int rocYear =Integer.parseInt(data.substring(0, 2));
+        int month = Integer.parseInt(data.substring(3, 5));
+        int day = Integer.parseInt(data.substring(6,7));
+        int year = rocYear + 1911;
+        LocalDate localDate = LocalDate.of(year, month, day);
+        return java.sql.Date.valueOf(localDate);
+    /**
+     * 擷取字串，輸入一段文字，給開頭字及結尾字，擷取中間內容。
+     *
+     * <p>範例：
+     * <pre>{@code
+     * String input = "這是一段範例文字，用來測試擷取功能。";
+     * String startPattern = "範例";
+     * String endPattern = "測試";
+     * String result = rRegexG(input =, startPattern, endPattern);
+     * System.out.println(result); // 輸出 "文字，用來"
+     * }</pre>
+     */
+    public static String rRegexG(String input, String startPattern, String endPattern) {
+        int index = input.indexOf(startPattern) + 2;
+        int index2 = input.indexOf(endPattern);
+        return input.substring(index, index2);
+    }
+
+    /**
+     * 擷取「第一組」的數字
+     *
+     * <p>範例：
+     * <pre>{@code
+     * String input = "我數123牽著手，你說456一起走";
+     * String result = rRegexInt(input);
+     * System.out.println(result); // 輸出 "123"
+     * }</pre>
+     */
+    public static String rRegexInt(String input) {
+//        String firstNumber = input.replaceAll(".*?(\\d+).*", "$1");//.*?：匹配任意字元 (非貪婪)。\\d+：匹配一個或多個數字，$1：提取第一個出現的數字群組。
+        return input.replaceAll(".*?(\\d+).*", "$1");
+    }
+    /**
+     * 取得一段文字中的民國年月日
+     *
+     * <p>範例：
+     * <pre>{@code
+     * String input = "TEJ於民國79年05月05日登記創立";
+     * String result = extractDate(input);
+     * System.out.println(result); // 輸出 "79年05月05日"
+     * }</pre>
+     */
+    public static String extractDate(String input) {
+//        String date = input.replaceAll(".*(\\d{2}年\\d{2}月\\d{2}日).*", "$1");
+        return input.replaceAll(".*(\\d{2}年\\d{2}月\\d{2}日).*", "$1");
+    }
+    /**
+     * 取得該路徑下有的txt檔案
+     *
+     * @param path
+     * @return
+     */
+    private static File[] getTxtFileList(String path) throws Exception {
+        File folder = new File(path);
+        File[] files = folder.listFiles((File dir, String name) -> {
+            File file = new File(dir, name);
+            return file.isFile() && name.toLowerCase().endsWith(".txt");
+        });
+        return files;
+    }
+
+    /**
+     * 讀取TXT內容
+     *
+     * @param txtFile
+     * @return
+     * @throws Exception
+     */
+    private static String readTxt(File txtFile) throws Exception {
+        Scanner scanner = new Scanner(txtFile);
+        String line = scanner.nextLine();
+        return line;
+    }
+}
+--------------------------------------------------
+package com.tej;
+
+import org.apache.log4j.xml.DOMConfigurator;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+public class JsonMain {
+	public static void main(String[] args) throws Exception {
+		DOMConfigurator.configure(".\\log4j.xml");
+		String jsonData1 = "[{array1:\"val1\"},{array2:\"val2\"}]";
+		//使用org.json的第三方JAR取出val1的值
+		JSONArray jsondata = new JSONArray(jsonData1);
+		for (int i = 0; i < jsondata.length(); i++) {
+			JSONObject jsonobj = jsondata.getJSONObject(i);
+			if (jsonobj.has("array1")) {
+				String array1 = jsonobj.getString("array1");
+				System.out.println(array1);
+
+				String jsonData2 = "{data:[{k1:\"v1\"},{k2:\"v2\"},{k3:\"v1\"},{k4:\"v2\"},{k5:\"v2\"}]}";
+//		使用org.json的第三方JAR取出val2的值(Array位置不能固定寫死)
+				JSONObject jsonarray = new JSONObject(jsonData2);
+				JSONArray jsonarray1 = jsonarray.getJSONArray("data");
+				for (int j = 0; j < jsonarray1.length(); j++) {
+					JSONObject jsonobj2 = jsonarray1.getJSONObject(j);
+					for (String key : jsonobj2.keySet()) {
+						if (jsonobj2.getString(key).equals("v2")) {
+							System.out.println(key + ":" + jsonobj2.getString(key));
+						}
+					}
+				}
+			}
+		}
+	}
+}
+---------------------------------------------------------------
+package com.tej;
+
+import java.io.File;
+import java.nio.file.FileSystems;
+import org.apache.log4j.xml.DOMConfigurator;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.Files;
+import java.util.List;
+import org.jsoup.nodes.Element;
+import org.jsoup.select.Elements;
+
+public class JsoupMain {
+
+	public static void main(String[] args) throws Exception {
+		DOMConfigurator.configure(".\\log4j.xml");
+		String spt = FileSystems.getDefault().getSeparator();
+		File file = new File(System.getProperty("user.dir") + spt + "data" +spt + "jsoup_test.html"); 
+		//取得HTML的原始碼
+		String source = readFile(file);
+		//將source解析為jsoup的doc物件
+		Document doc = Jsoup.parse(source);
+		//嘗試用JSOUP取值
+
+		//練習1  取出[活期存款的機動利率]，讓程式印出利率的數值(應該要印出0.385)
+		Elements rows = doc.select("table#rate_table tr");
+		for (Element row : rows) {
+			String rowText = row.text().trim();
+			if (rowText.contains("活期存款") && !rowText.contains("證券戶") && !rowText.contains("專戶")) {
+				Element rateTd = row.select("td.table-text-right").first();
+					System.out.println(rateTd.text());
+			}
+		}
+		//練習2  取出資料日期：後的日期
+		Element dateElement = doc.select("p.p4.d-inline-block").first();
+			String dateText = dateElement.text();
+			String data = dateText.replaceAll(".*(\\d{4}年\\d{2}月\\d{2}日).*", "$1");
+			System.out.println(data);
+	}
+	/**
+	 * 讀取TXT內容
+	 * @param txtFile
+	 * @return
+	 * @throws Exception
+	 */
+	private static String readFile(File txtFile) throws Exception{
+		Path testFilePath = Paths.get(txtFile.toURI());
+		List<String> lines = Files.readAllLines(testFilePath);
+		return String.join("\n", lines);
+	}
+}
