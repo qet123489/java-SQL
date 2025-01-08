@@ -1,0 +1,217 @@
+package com.tej;
+
+import com.tej.error.ErrorTitle;
+import com.tej.frame.Table;
+import com.tej.postgresql.connection.IDBConnector;
+import org.apache.log4j.Logger;
+import org.apache.log4j.xml.DOMConfigurator;
+import tej_unit.tool.ToolUtil;
+import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.*;
+
+public class PanDAO {
+    private static final Logger logger = Logger.getLogger("IMPORT");
+    private IDBConnector market;
+    private String tableName;
+
+    public PanDAO(String tableName) throws Exception {
+        DOMConfigurator.configure(".\\log4j.xml");
+        this.market = ToolUtil.getMarket("testtwn");
+        this.tableName = tableName;
+    }
+
+    public static void main(String[] args) throws Exception {
+        DOMConfigurator.configure(".\\log4j.xml");
+        //更改table名稱=attr_pan_員編
+        String tableName="basic.attr_pan_2024120203";
+        PanDAO dao = new PanDAO(tableName);
+        dao=new PanDAO("basic.iphone");
+
+
+
+        List<Pan> panList = new ArrayList<>();
+
+        //(1)產生物件
+        Pan pan1 = new Pan();
+        //創建[id=1,color=紅色,price=4]
+        pan1.setId(BigDecimal.valueOf(1));
+        pan1.setColor("紅色");
+        pan1.setPrice(Float.valueOf(4));
+        logger.info(pan1.toString());
+        panList.add(pan1);
+        //創建[id=2,color=藍色,price=4]
+        Pan pan2 = new Pan();
+        pan2.setId(BigDecimal.valueOf(2));
+        pan2.setColor("藍色");
+        pan2.setPrice(Float.valueOf(4));
+        logger.info(pan2.toString());
+        panList.add(pan2);
+
+        //(2)將物件轉換為tempMap
+        Table[] tempMap = dao.toChange(panList);
+        if (tempMap != null) {
+            dao.modify(tempMap);
+            logger.info("資料處理完成，共處理 " + tempMap.length + " 筆資料。");
+        } else {
+            logger.info("本次資料共計 0筆");
+        }
+    }
+    //撰寫新增、更新、刪除、查詢方法
+    public void modify(Object[] tempMap) throws SQLException {
+        //(1)理解為什麼方法參數是Object，卻可以傳入Table
+        //答案：[撰寫此處]
+        //(2)將tempMap 從Object[] 轉成Pan[]
+        Pan[] pans = toChange2(tempMap);
+        if (pans == null || pans.length == 0) {
+            logger.info("本次資料共計 0筆");
+            return;
+        } else logger.info(String.format("本次資料共計 %s筆", pans.length));
+        //查詢:List (List,ArrayList,LinkedList) Set(Set,HashSet,LinkedHashSet) 差異
+
+        int i = 0;
+        int u = 0;
+        int d = 0;
+        int s = 0;
+        String sql ="";
+        Connection conn = null;
+        PreparedStatement pstmt = null;
+        ResultSet rs = null;
+        try {
+            conn = this.market.getConnection();
+            conn.setAutoCommit(false);
+
+            // Step 1: 新增資料
+            logger.info("step1: 新增");
+            sql = getInsertSQL() + "ON CONFLICT (id) " + "DO NOTHING;"; // 重複時略過插入
+            pstmt = conn.prepareStatement(sql);
+
+            for (Pan pan : pans) {
+                pstmt.setBigDecimal(1, pan.getId());
+                pstmt.setString(2, pan.getColor());
+                pstmt.setFloat(3, pan.getPrice());
+                pstmt.addBatch();
+            }
+            //更改功能:我不要一個迴圈推一次 我要全部的bean只推一次到db[93,105,115]
+            int[] insertResults = pstmt.executeBatch();
+            i = insertResults.length;
+            logger.info("新增筆數: " + i);
+            pstmt.close();
+            //step2:更新
+            logger.info("step2:更新");
+            sql = getUpdateSQL();
+            pstmt = conn.prepareStatement(sql);
+            for (Pan pan : pans) {
+                pstmt.setString(1, pan.getColor());
+                pstmt.setFloat(2, pan.getPrice());
+                pstmt.setBigDecimal(3, pan.getId());
+                pstmt.addBatch();
+            }
+            int[] updateResults = pstmt.executeBatch(); // 執行批次更新
+            u = updateResults.length; // 計算更新筆數
+            logger.info("更新筆數: " + u);
+            pstmt.close();
+            //step3:刪除
+            logger.info("step3:刪除");
+            sql = getDeleteSQL();
+            pstmt = conn.prepareStatement(sql);
+            for (Pan pan : pans) {
+                pstmt.setBigDecimal(1, pan.getId());
+                pstmt.addBatch();
+            }
+            int[] deleteResults = pstmt.executeBatch(); // 執行批次刪除
+            d = deleteResults.length; // 計算刪除筆數
+            logger.info("刪除筆數: " + d);
+            pstmt.close();
+
+            //step4:查詢
+            logger.info("step4:查詢");
+            sql = getSelectSQL();
+            pstmt = conn.prepareStatement(sql);
+            rs = pstmt.executeQuery();
+            List<Pan> panList_select = new ArrayList<>();
+            while (rs.next()) {
+               BigDecimal id =rs.getBigDecimal("id");
+               String color = rs.getString("color");
+               Float price = rs.getFloat("price");
+               Pan bean=new Pan();
+               bean.setId(id);
+               bean.setColor(color);
+               bean.setPrice(price);
+               panList_select.add(bean);
+                // 處理查詢結果（例如讀取欄位）
+            }
+            for (Pan pan : panList_select) {
+                logger.info(String.format("查詢結果: id=%s, color=%s, price=%s", pan.getId(), pan.getColor(), pan.getPrice()));
+            }
+            s = panList_select.size();
+            logger.info("查詢筆數: " + panList_select.size());
+            //需懂：提交
+            conn.commit();
+            logger.info("所有操作完成，交易已提交。");
+
+            //需懂：catch、Exception、finally、rollback、close
+        } catch (SQLException e) {
+            logger.error(ErrorTitle.UNKNOW_TITLE.getTitle("SQL=" + (pstmt == null ? sql : pstmt)), e);
+            if (conn != null) conn.rollback();
+        } finally {
+            if (rs != null) rs.close();
+            if (pstmt != null) pstmt.close();
+            if (conn != null) conn.close();
+        }
+        logger.info(String.format("共計新增 %s筆", i));
+        logger.info(String.format("共計更新 %s筆", u));
+        logger.info(String.format("共計刪除 %s筆", d));
+        logger.info(String.format("共計查詢 %s筆", s));
+
+    }
+    private Table[] toChange(List<Pan> panList) {
+        if (panList == null || panList.isEmpty()) return null;
+        //從此處開始修改
+        Table[] tempMap = new Table[panList.size()];
+        for (int i = 0; i < panList.size(); i++) {
+            Pan pan = panList.get(i);
+            Object[] tableBean = new Object[]{pan.getId(), pan.getColor(), pan.getPrice()};
+            String description = "Pan data";
+            Table table = new Table(tableBean, description);
+            tempMap[i] = table;
+        }
+        return tempMap;
+    }
+    private Pan[] toChange2(Object[] objects) {
+        if (objects == null || objects.length == 0) return null;
+        //從此處開始修改
+        Pan[] pans = new Pan[objects.length];
+        for (int i = 0; i < objects.length; i++) {
+            Table table = (Table) objects[i];
+            Pan pan = new Pan();
+            Object[] tableBean = table.getTableBean();
+            if(tableBean != null && tableBean.length >= 3) {
+                pan.setId((BigDecimal) tableBean[0]);
+                pan.setColor((String) tableBean[1]);
+                pan.setPrice((Float) tableBean[2]);
+            }
+            pans[i] = pan;
+        }
+        return pans;
+    }
+
+    private String getInsertSQL() {
+        return "insert into " + tableName + " values(?,?,?)";
+    }
+
+    private String getUpdateSQL() {
+        return "update " + tableName + " set color=?,price=? where id=?";
+    }
+
+    private String getDeleteSQL() {
+        return "delete from " + tableName + " where id=?";
+    }
+
+    private String getSelectSQL() {
+        return "select id,color,price from " + tableName;
+    }
+}
