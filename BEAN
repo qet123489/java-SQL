@@ -1,0 +1,78 @@
+package com.tej;
+
+import java.math.BigDecimal;
+
+public class Pan {
+    //step1:寫出以下創建table的sql語法，於pgAdmin上執行，創建出table
+    //創建Pan table在 twn.basic table名稱=attr_pan_員編
+    //該table包含以下欄位：
+    // id     / bigint                / 流水號
+    // color  / character varying(10) / 顏色
+    // price  / numeric(6,2)          / 價格
+    //PK=id
+    //註：第9~11為欄位，分別代表[欄位名稱/型態/說明]
+
+    //step2:呈上題，依照串出來的table完成以下題目
+    //(1)完成本java檔案，撰寫table Pan 的 bean set get，並了解建構子
+    //(2)覆寫[英文稱為overwrite]方法： toString()、 hasCode()、 equals() 、colon()
+
+    private BigDecimal id;
+    private String color;
+    private float price;
+    public Pan() {}
+    public Pan(BigDecimal id, String color, float price) {
+        this.id = id;
+        this.color = color;
+        this.price = price;
+    }
+
+    // Getter 和 Setter 方法
+    public BigDecimal getId() {
+        return id;
+    }
+
+    public void setId(BigDecimal id) {
+        this.id = id;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public void setColor(String color) {
+        this.color = color;
+    }
+
+    public float getPrice() {
+        return price;
+    }
+
+    public void setPrice(float price) {
+        this.price = price;
+    }
+
+
+    public String toString() {
+        return "Pan [id=" + id + ", color=" + color + ", price=" + price + "]";
+    }
+
+    @Override
+    protected Object clone() throws CloneNotSupportedException {
+        return super.clone();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        return super.equals(obj);
+    }
+
+    @Override
+    public int hashCode() {
+        return super.hashCode();
+    }
+
+    public static void main(String[] args) throws Exception {
+        //java創造物件的時候，透過new指令呼叫建構子,創造出物件
+        new PanDAO("basic.iphone");
+    }
+}
